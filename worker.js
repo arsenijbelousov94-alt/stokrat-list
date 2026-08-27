@@ -510,4 +510,206 @@ function formatMoscowDate(iso) {
 }
 
 function openInfoModal(person, adminMode) {
-  el.infoNick.textContent = person.nick || 'Анкета'
+  el.infoNick.textContent = person.nick || 'Анкета';
+  el.infoAddedBy.textContent = person.addedBy || 'неизвестно';
+  el.infoCreatedAt.textContent = formatMoscowDate(person.createdAt);
+  el.infoAcceptedToggle.checked = !!person.accepted;
+  el.infoAcceptedToggle.disabled = !adminMode;
+  el.infoAcceptedToggle.onchange = async () => {
+    const accepted = el.infoAcceptedToggle.checked;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+        body: JSON.stringify({ action: 'update', id: person.id, accepted })
+      });
+      if (res.status === 401) return handleUnauthorized();
+      person.accepted = accepted;
+      renderTable();
+    } catch (err) {
+      alert('Не удалось сохранить статус');
+      el.infoAcceptedToggle.checked = !accepted;
+    }
+  };
+  openModal(el.infoModal);
+}
+
+function makeCell(person, field, editable) {
+  const td = document.createElement('td');
+  td.className = 'editable';
+  td.textContent = person[field] || '';
+  if (editable) {
+    td.contentEditable = 'true';
+    td.addEventListener('blur', () => {
+      const newValue = td.textContent.trim();
+      if (newValue !== (person[field] || '')) updatePerson(person.id, field, newValue);
+    });
+    td.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
+    });
+  }
+  return td;
+}
+
+el.addForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nick = el.fNick.value.trim();
+  if (!nick) return;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'add', nick, uz: el.fUz.value.trim(), ds: el.fDs.value.trim(), post: el.fPost.value.trim() })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const person = await res.json();
+    state.people.push(person);
+    el.addForm.reset();
+    renderTable();
+  } catch (err) {
+    alert('Не удалось добавить участника');
+  }
+});
+
+async function updatePerson(id, field, value) {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'update', id, [field]: value })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const person = state.people.find((p) => p.id === id);
+    if (person) person[field] = value;
+  } catch (err) {
+    alert('Не удалось сохранить изменение');
+  }
+}
+
+async function deletePerson(id) {
+  if (!confirm('Удалить участника?')) return;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'delete', id })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    state.people = state.people.filter((p) => p.id !== id);
+    renderTable();
+  } catch (err) {
+    alert('Не удалось удалить участника');
+  }
+}
+
+// ---------- Аккаунты сотрудников (только суперадмин) ----------
+
+el.newAccountBtn.addEventListener('click', () => {
+  el.accountError.classList.add('hidden');
+  el.accountSuccess.classList.add('hidden');
+  el.accountForm.reset();
+  openModal(el.accountModal);
+  el.aLogin.focus();
+});
+
+el.accountForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  el.accountError.classList.add('hidden');
+  el.accountSuccess.classList.add('hidden');
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({
+        action: 'create_account',
+        login: el.aLogin.value.trim(),
+        password: el.aPassword.value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      el.accountError.textContent = data.error || 'Не удалось создать логин';
+      el.accountError.classList.remove('hidden');
+      return;
+    }
+    el.accountSuccess.textContent = 'Логин "' + data.login + '" создан';
+    el.accountSuccess.classList.remove('hidden');
+    el.accountForm.reset();
+    loadAccounts();
+  } catch (err) {
+    el.accountError.textContent = 'Не удалось связаться с сервером';
+    el.accountError.classList.remove('hidden');
+  }
+});
+
+async function loadAccounts() {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'list_accounts' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const accounts = await res.json();
+    renderAccounts(accounts);
+  } catch (err) {
+    // тихо игнорируем — панель не критична
+  }
+}
+
+function renderAccounts(accounts) {
+  el.accountsList.innerHTML = '';
+  if (accounts.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'Пока нет созданных логинов';
+    li.style.fontFamily = 'inherit';
+    el.accountsList.appendChild(li);
+    return;
+  }
+  accounts.forEach((acc) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = acc.login;
+    const right = document.createElement('span');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '8px';
+    const tag = document.createElement('span');
+    tag.className = 'role-tag';
+    tag.textContent = 'сотрудник';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger';
+    delBtn.textContent = 'Удалить';
+    delBtn.addEventListener('click', () => deleteAccount(acc.login));
+    right.appendChild(tag);
+    right.appendChild(delBtn);
+    li.appendChild(name);
+    li.appendChild(right);
+    el.accountsList.appendChild(li);
+  });
+}
+
+async function deleteAccount(login) {
+  if (!confirm('Удалить логин "' + login + '"?')) return;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'delete_account', login })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    loadAccounts();
+  } catch (err) {
+    alert('Не удалось удалить логин');
+  }
+}
+
+function handleUnauthorized() {
+  alert('Сессия истекла, войдите заново');
+  logout();
+}
+
+render();
+</script>
+</body>
+</html>
