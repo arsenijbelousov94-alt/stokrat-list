@@ -47,6 +47,9 @@
   .big-btn {
     padding: 16px 26px; font-size: 15px; border-radius: 12px; min-width: 220px;
   }
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+  .landing-links { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .landing-links .btn { min-width: 220px; padding: 12px 22px; font-size: 14px; }
 
   .panel {
     background: var(--panel); border: 1px solid var(--panel-border);
@@ -144,6 +147,10 @@ window.onerror = function(msg, url, line, col, error) {
       <button id="btn-login" class="btn btn-primary big-btn">Войти как сотрудник</button>
       <button id="btn-view" class="btn btn-outline big-btn">Посмотреть список</button>
     </div>
+    <div class="landing-links">
+      <a href="https://stokratregistration.netlify.app/" target="_blank" rel="noopener" class="btn btn-outline">Подать заявку на вступление</a>
+      <a href="https://web.telegram.org/k/#@stokratapp_bot" target="_blank" rel="noopener" class="btn btn-outline">Перейти в Telegram-бот</a>
+    </div>
   </section>
 
   <!-- Панель создания логинов сотрудников (только суперадмин) -->
@@ -163,6 +170,7 @@ window.onerror = function(msg, url, line, col, error) {
       <input type="text" id="f-nick" placeholder="Ник" autocomplete="off" required>
       <input type="text" id="f-uz" placeholder="Юз" autocomplete="off">
       <input type="text" id="f-ds" placeholder="ДС" autocomplete="off">
+      <input type="text" id="f-post" placeholder="Должность" autocomplete="off">
       <button type="submit" class="btn btn-primary">Добавить</button>
     </form>
   </section>
@@ -181,6 +189,8 @@ window.onerror = function(msg, url, line, col, error) {
             <th>Ник</th>
             <th>Юз</th>
             <th>ДС</th>
+            <th>Должность</th>
+            <th>Добавлен (МСК)</th>
             <th class="col-actions admin-only hidden"></th>
           </tr>
         </thead>
@@ -258,6 +268,7 @@ const el = {
   fNick: document.getElementById('f-nick'),
   fUz: document.getElementById('f-uz'),
   fDs: document.getElementById('f-ds'),
+  fPost: document.getElementById('f-post'),
 
   listPanel: document.getElementById('list-panel'),
   peopleBody: document.getElementById('people-body'),
@@ -411,6 +422,12 @@ function renderTable() {
     tr.appendChild(makeCell(person, 'nick', adminMode));
     tr.appendChild(makeCell(person, 'uz', adminMode));
     tr.appendChild(makeCell(person, 'ds', adminMode));
+    tr.appendChild(makeCell(person, 'post', adminMode));
+
+    const dateTd = document.createElement('td');
+    dateTd.className = 'editable';
+    dateTd.textContent = formatMoscowDate(person.createdAt);
+    tr.appendChild(dateTd);
 
     const actionsTd = document.createElement('td');
     actionsTd.className = 'actions-cell';
@@ -424,6 +441,20 @@ function renderTable() {
 
     el.peopleBody.appendChild(tr);
   });
+}
+
+function formatMoscowDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch (e) {
+    return '—';
+  }
 }
 
 function makeCell(person, field, editable) {
@@ -451,7 +482,7 @@ el.addForm.addEventListener('submit', async (e) => {
     const res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'add', nick, uz: el.fUz.value.trim(), ds: el.fDs.value.trim() })
+      body: JSON.stringify({ action: 'add', nick, uz: el.fUz.value.trim(), ds: el.fDs.value.trim(), post: el.fPost.value.trim() })
     });
     if (res.status === 401) return handleUnauthorized();
     const person = await res.json();
