@@ -83,6 +83,12 @@ async function handleApi(request, env) {
 
   if (request.method === 'GET') {
     const list = JSON.parse((await kv.get('people')) || '[]');
+    // Сначала те, у кого заполнена должность
+    list.sort((a, b) => {
+      const aHas = a.post ? 1 : 0;
+      const bHas = b.post ? 1 : 0;
+      return bHas - aHas;
+    });
     return json(list);
   }
 
@@ -161,7 +167,9 @@ async function handleApi(request, env) {
       id: crypto.randomUUID(),
       nick: (body.nick || '').trim(),
       uz: (body.uz || '').trim(),
-      ds: (body.ds || '').trim()
+      ds: (body.ds || '').trim(),
+      post: (body.post || '').trim(),
+      createdAt: new Date().toISOString()
     };
     list.push(person);
     await kv.put('people', JSON.stringify(list));
@@ -178,7 +186,8 @@ async function handleApi(request, env) {
           ...p,
           nick: body.nick !== undefined ? body.nick.trim() : p.nick,
           uz: body.uz !== undefined ? body.uz.trim() : p.uz,
-          ds: body.ds !== undefined ? body.ds.trim() : p.ds
+          ds: body.ds !== undefined ? body.ds.trim() : p.ds,
+          post: body.post !== undefined ? body.post.trim() : p.post
         };
       }
       return p;
