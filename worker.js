@@ -1,715 +1,224 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Реестр участников</title>
-<style>
-  :root {
-    --bg: #0f1115;
-    --panel: #161923;
-    --panel-border: #262b3a;
-    --text: #e7e9f0;
-    --text-dim: #8a90a6;
-    --accent: #6ee7b7;
-    --accent-dim: #2f4a41;
-    --danger: #ef6a6a;
-    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    min-height: 100vh;
-  }
-  .topbar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 28px; border-bottom: 1px solid var(--panel-border);
-    position: sticky; top: 0; background: rgba(15,17,21,0.92);
-    backdrop-filter: blur(6px); z-index: 10; gap: 12px; flex-wrap: wrap;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-  .brand-mark {
-    font-family: var(--mono); color: var(--accent); background: var(--accent-dim);
-    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-    border-radius: 6px; font-size: 15px;
-  }
-  .auth-area { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+// worker.js
+// Единый Cloudflare Worker: раздаёт статический сайт (index.html) и
+// обрабатывает запросы к /api (вход, CRUD списка, управление аккаунтами).
+// Хранилище: Cloudflare KV (привязка PEOPLE_KV, настраивается в дашборде,
+// вкладка "Bindings").
 
-  /* Стартовый экран */
-  .landing { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 20px; gap: 22px; }
-  .landing h1 { font-size: 22px; margin: 0; }
-  .landing p { color: var(--text-dim); margin: 0; font-size: 14px; }
-  .landing-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
-  .big-btn {
-    padding: 16px 26px; font-size: 15px; border-radius: 12px; min-width: 220px;
-  }
-  a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
-  .landing-links { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-  .landing-links .btn { min-width: 220px; padding: 12px 22px; font-size: 14px; }
+const SUPER_LOGIN = 'St_admin1';
+const SUPER_PASSWORD = 'st1FghXoL';
 
-  .panel {
-    background: var(--panel); border: 1px solid var(--panel-border);
-    border-radius: 12px; padding: 20px; margin-bottom: 20px;
-  }
-  .panel h2 {
-    margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--text-dim);
-    text-transform: uppercase; letter-spacing: 0.6px;
-  }
-  .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .panel-head h2 { margin: 0; }
-  .count {
-    font-family: var(--mono); color: var(--accent); background: var(--accent-dim);
-    padding: 2px 10px; border-radius: 20px; font-size: 13px;
-  }
-  .row-form { display: flex; flex-wrap: wrap; gap: 10px; }
-  .row-form input { flex: 1 1 140px; }
-  input[type="text"], input[type="password"] {
-    background: #0f1115; border: 1px solid var(--panel-border); color: var(--text);
-    padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; width: 100%;
-  }
-  input:focus { border-color: var(--accent); }
-  .btn {
-    border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px;
-    font-weight: 600; cursor: pointer; transition: opacity .15s ease;
-  }
-  .btn:hover { opacity: 0.85; }
-  .btn-primary { background: var(--accent); color: #0b1310; }
-  .btn-outline { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
-  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 6px 10px; font-size: 12px; }
-  .btn-full { width: 100%; margin-top: 4px; }
-  .table-scroll { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
-  th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
-  td.editable { font-family: var(--mono); }
-  td[contenteditable="true"] { cursor: text; border-radius: 4px; }
-  td[contenteditable="true"]:focus { outline: 1px solid var(--accent); background: rgba(110,231,183,0.06); }
-  .col-actions { width: 90px; text-align: right; }
-  td.actions-cell { text-align: right; white-space: nowrap; }
-  .empty { color: var(--text-dim); font-size: 14px; padding: 10px 0; }
-  .hidden { display: none !important; }
-  .modal-overlay {
-    position: fixed; inset: 0; background: rgba(5,6,9,0.7);
-    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
-  }
-  .modal {
-    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
-    padding: 26px; width: 100%; max-width: 340px; position: relative;
-  }
-  .modal h2 { margin: 0 0 16px; font-size: 16px; }
-  .modal form { display: flex; flex-direction: column; gap: 10px; }
-  .modal-close {
-    position: absolute; top: 12px; right: 14px; background: none; border: none;
-    color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1;
-  }
-  .error { color: var(--danger); font-size: 13px; margin: 4px 0 0; }
-  .success { color: var(--accent); font-size: 13px; margin: 4px 0 0; }
-  .accounts-list { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; max-height: 160px; overflow-y: auto; }
-  .accounts-list li { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 13px; background: #0f1115; border: 1px solid var(--panel-border); padding: 6px 10px; border-radius: 6px; }
-  .role-tag { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
-  td.not-accepted { border: 2px solid var(--danger); border-radius: 6px; }
-  .btn-info { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 6px 10px; font-size: 12px; }
-  .info-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
-  .info-row:last-of-type { border-bottom: none; }
-  .info-label { color: var(--text-dim); font-size: 13px; }
-  .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .switch-track {
-    position: absolute; cursor: pointer; inset: 0; background: #3a3f52;
-    border-radius: 26px; transition: background .15s ease;
-  }
-  .switch-track::before {
-    content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px;
-    background: #e7e9f0; border-radius: 50%; transition: transform .15s ease;
-  }
-  .switch input:checked + .switch-track { background: var(--accent-dim); }
-  .switch input:checked + .switch-track::before { transform: translateX(20px); background: var(--accent); }
-  .switch input:disabled + .switch-track { opacity: 0.5; cursor: default; }
-  @media (max-width: 560px) {
-    .topbar { padding: 14px 16px; }
-    .big-btn { width: 100%; }
-  }
-</style>
-</head>
-<body>
-
-<script>
-window.onerror = function(msg, url, line, col, error) {
-  var box = document.createElement('div');
-  box.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b91c1c;color:#fff;padding:16px;font-family:monospace;font-size:13px;white-space:pre-wrap;z-index:9999;';
-  box.textContent = 'ОШИБКА JS: ' + msg + ' (строка ' + line + ', столбец ' + col + ')';
-  document.body.prepend(box);
-  return false;
-};
-</script>
-
-<header class="topbar">
-  <div class="brand">
-    <span class="brand-mark">#</span>
-    <span>Реестр участников</span>
-  </div>
-  <div id="auth-area" class="auth-area"></div>
-</header>
-
-<main class="wrap">
-
-  <!-- Стартовый экран -->
-  <section id="landing" class="landing">
-    <h1>Что вы хотите сделать?</h1>
-    <p>Просмотреть список участников или войти как сотрудник, чтобы его редактировать.</p>
-    <div class="landing-buttons">
-      <button id="btn-login" class="btn btn-primary big-btn">Войти как сотрудник</button>
-      <button id="btn-view" class="btn btn-outline big-btn">Посмотреть список</button>
-    </div>
-    <div class="landing-links">
-      <a href="https://stokratregistration.netlify.app/" target="_blank" rel="noopener" class="btn btn-outline">Подать заявку на вступление</a>
-      <a href="https://web.telegram.org/k/#@stokratapp_bot" target="_blank" rel="noopener" class="btn btn-outline">Перейти в Telegram-бот</a>
-    </div>
-  </section>
-
-  <!-- Панель создания логинов сотрудников (только суперадмин) -->
-  <section id="accounts-panel" class="panel hidden">
-    <div class="panel-head">
-      <h2>Логины сотрудников</h2>
-      <button id="new-account-btn" class="btn btn-outline">+ Создать логин</button>
-    </div>
-    <p style="color:var(--text-dim); font-size:13px; margin:0;">Только St_admin1 может создавать логины для входа.</p>
-    <ul id="accounts-list" class="accounts-list"></ul>
-  </section>
-
-  <!-- Форма добавления участника (для вошедших) -->
-  <section id="add-panel" class="panel hidden">
-    <h2>Добавить участника</h2>
-    <form id="add-form" class="row-form">
-      <input type="text" id="f-nick" placeholder="Ник" autocomplete="off" required>
-      <input type="text" id="f-uz" placeholder="Юз" autocomplete="off">
-      <input type="text" id="f-ds" placeholder="ДС" autocomplete="off">
-      <input type="text" id="f-post" placeholder="Должность" autocomplete="off">
-      <button type="submit" class="btn btn-primary">Добавить</button>
-    </form>
-  </section>
-
-  <!-- Список -->
-  <section id="list-panel" class="panel hidden">
-    <div class="panel-head">
-      <h2>Список</h2>
-      <span id="count" class="count">0</span>
-    </div>
-    <div id="empty-state" class="empty hidden">Список пока пуст.</div>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Ник</th>
-            <th>Юз</th>
-            <th>ДС</th>
-            <th>Должность</th>
-            <th class="col-actions"></th>
-            <th class="col-actions admin-only hidden"></th>
-          </tr>
-        </thead>
-        <tbody id="people-body"></tbody>
-      </table>
-    </div>
-  </section>
-
-</main>
-
-<!-- Модалка входа -->
-<div id="login-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <button class="modal-close" data-close="login-modal" aria-label="Закрыть">×</button>
-    <h2>Вход для сотрудников</h2>
-    <form id="login-form">
-      <input type="text" id="l-login" placeholder="Логин" autocomplete="username" required>
-      <input type="password" id="l-password" placeholder="Пароль" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary btn-full">Войти</button>
-      <p id="login-error" class="error hidden"></p>
-    </form>
-  </div>
-</div>
-
-<!-- Модалка создания логина сотрудника -->
-<div id="account-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <button class="modal-close" data-close="account-modal" aria-label="Закрыть">×</button>
-    <h2>Новый логин сотрудника</h2>
-    <form id="account-form">
-      <input type="text" id="a-login" placeholder="Логин" autocomplete="off" required>
-      <input type="text" id="a-password" placeholder="Пароль" autocomplete="off" required>
-      <button type="submit" class="btn btn-primary btn-full">Создать</button>
-      <p id="account-error" class="error hidden"></p>
-      <p id="account-success" class="success hidden"></p>
-    </form>
-  </div>
-</div>
-
-<!-- Модалка "О анкете" -->
-<div id="info-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <button class="modal-close" data-close="info-modal" aria-label="Закрыть">×</button>
-    <h2 id="info-nick">Анкета</h2>
-    <div class="info-row">
-      <span class="info-label">Добавил</span>
-      <span id="info-added-by">—</span>
-    </div>
-    <div class="info-row">
-      <span class="info-label">Дата принятия (МСК)</span>
-      <span id="info-created-at">—</span>
-    </div>
-    <div class="info-row">
-      <span class="info-label">Принят в клан</span>
-      <label class="switch">
-        <input type="checkbox" id="info-accepted-toggle">
-        <span class="switch-track"></span>
-      </label>
-    </div>
-  </div>
-</div>
-
-<script>
-const API = '/api';
-
-const state = {
-  token: sessionStorage.getItem('st_token') || null,
-  role: sessionStorage.getItem('st_role') || null,
-  login: sessionStorage.getItem('st_login') || null,
-  mode: null, // 'guest' | 'admin' | null (landing)
-  people: []
-};
-
-const el = {
-  authArea: document.getElementById('auth-area'),
-  landing: document.getElementById('landing'),
-  btnLogin: document.getElementById('btn-login'),
-  btnView: document.getElementById('btn-view'),
-
-  loginModal: document.getElementById('login-modal'),
-  loginForm: document.getElementById('login-form'),
-  loginLogin: document.getElementById('l-login'),
-  loginPassword: document.getElementById('l-password'),
-  loginError: document.getElementById('login-error'),
-
-  accountsPanel: document.getElementById('accounts-panel'),
-  newAccountBtn: document.getElementById('new-account-btn'),
-  accountModal: document.getElementById('account-modal'),
-  accountForm: document.getElementById('account-form'),
-  aLogin: document.getElementById('a-login'),
-  aPassword: document.getElementById('a-password'),
-  accountError: document.getElementById('account-error'),
-  accountSuccess: document.getElementById('account-success'),
-  accountsList: document.getElementById('accounts-list'),
-
-  addPanel: document.getElementById('add-panel'),
-  addForm: document.getElementById('add-form'),
-  fNick: document.getElementById('f-nick'),
-  fUz: document.getElementById('f-uz'),
-  fDs: document.getElementById('f-ds'),
-  fPost: document.getElementById('f-post'),
-
-  listPanel: document.getElementById('list-panel'),
-  peopleBody: document.getElementById('people-body'),
-  emptyState: document.getElementById('empty-state'),
-  count: document.getElementById('count'),
-  actionsHeader: document.querySelector('.col-actions.admin-only'),
-
-  infoModal: document.getElementById('info-modal'),
-  infoNick: document.getElementById('info-nick'),
-  infoAddedBy: document.getElementById('info-added-by'),
-  infoCreatedAt: document.getElementById('info-created-at'),
-  infoAcceptedToggle: document.getElementById('info-accepted-toggle')
-};
-
-document.querySelectorAll('.modal-close').forEach((btn) => {
-  btn.addEventListener('click', () => closeModal(document.getElementById(btn.dataset.close)));
-});
-document.querySelectorAll('.modal-overlay').forEach((overlay) => {
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(overlay); });
-});
-function openModal(overlay) { overlay.classList.remove('hidden'); }
-function closeModal(overlay) { overlay.classList.add('hidden'); }
-
-function isLoggedIn() { return !!state.token; }
-function isSuperAdmin() { return state.role === 'superadmin'; }
-
-// ---------- Навигация между экранами ----------
-
-function goLanding() {
-  state.mode = null;
-  render();
-}
-function goGuest() {
-  state.mode = 'guest';
-  loadPeople();
-  render();
-}
-function goAdmin() {
-  state.mode = 'admin';
-  loadPeople();
-  if (isSuperAdmin()) loadAccounts();
-  render();
-}
-
-el.btnView.addEventListener('click', goGuest);
-el.btnLogin.addEventListener('click', () => {
-  if (isLoggedIn()) { goAdmin(); return; }
-  el.loginError.classList.add('hidden');
-  openModal(el.loginModal);
-  el.loginLogin.focus();
-});
-
-// ---------- Рендер шапки ----------
-
-function renderAuthArea() {
-  el.authArea.innerHTML = '';
-
-  if (state.mode) {
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn btn-outline';
-    backBtn.textContent = '← Назад';
-    backBtn.addEventListener('click', goLanding);
-    el.authArea.appendChild(backBtn);
-  }
-
-  if (isLoggedIn()) {
-    const badge = document.createElement('span');
-    badge.className = 'btn btn-outline';
-    badge.style.cursor = 'default';
-    badge.textContent = state.login + (isSuperAdmin() ? ' · суперадмин' : ' · сотрудник');
-    const logoutBtn = document.createElement('button');
-    logoutBtn.className = 'btn btn-outline';
-    logoutBtn.textContent = 'Выйти';
-    logoutBtn.addEventListener('click', logout);
-    el.authArea.appendChild(badge);
-    el.authArea.appendChild(logoutBtn);
-  }
-}
-
-function render() {
-  renderAuthArea();
-
-  el.landing.classList.toggle('hidden', !!state.mode);
-  el.listPanel.classList.toggle('hidden', !state.mode);
-
-  const adminMode = state.mode === 'admin' && isLoggedIn();
-  el.addPanel.classList.toggle('hidden', !adminMode);
-  el.accountsPanel.classList.toggle('hidden', !(adminMode && isSuperAdmin()));
-  el.actionsHeader.classList.toggle('hidden', !adminMode);
-
-  renderTable();
-}
-
-function logout() {
-  state.token = null;
-  state.role = null;
-  state.login = null;
-  sessionStorage.removeItem('st_token');
-  sessionStorage.removeItem('st_role');
-  sessionStorage.removeItem('st_login');
-  goLanding();
-}
-
-// ---------- Вход ----------
-
-el.loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  el.loginError.classList.add('hidden');
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'login',
-        login: el.loginLogin.value.trim(),
-        password: el.loginPassword.value
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      el.loginError.textContent = data.error || 'Ошибка входа';
-      el.loginError.classList.remove('hidden');
-      return;
-    }
-    state.token = data.token;
-    state.role = data.role;
-    state.login = data.login;
-    sessionStorage.setItem('st_token', data.token);
-    sessionStorage.setItem('st_role', data.role);
-    sessionStorage.setItem('st_login', data.login);
-    closeModal(el.loginModal);
-    el.loginForm.reset();
-    goAdmin();
-  } catch (err) {
-    el.loginError.textContent = 'Не удалось связаться с сервером';
-    el.loginError.classList.remove('hidden');
-  }
-});
-
-// ---------- Список участников ----------
-
-async function loadPeople() {
-  const res = await fetch(API);
-  state.people = await res.json();
-  renderTable();
-}
-
-function renderTable() {
-  el.peopleBody.innerHTML = '';
-  el.count.textContent = state.people.length;
-  el.emptyState.classList.toggle('hidden', state.people.length > 0);
-
-  const adminMode = state.mode === 'admin' && isLoggedIn();
-
-  state.people.forEach((person) => {
-    const tr = document.createElement('tr');
-    const nickTd = makeCell(person, 'nick', adminMode);
-    if (!person.accepted) nickTd.classList.add('not-accepted');
-    tr.appendChild(nickTd);
-    tr.appendChild(makeCell(person, 'uz', adminMode));
-    tr.appendChild(makeCell(person, 'ds', adminMode));
-    tr.appendChild(makeCell(person, 'post', adminMode));
-
-    const infoTd = document.createElement('td');
-    const infoBtn = document.createElement('button');
-    infoBtn.className = 'btn btn-info';
-    infoBtn.textContent = 'О анкете';
-    infoBtn.addEventListener('click', () => openInfoModal(person, adminMode));
-    infoTd.appendChild(infoBtn);
-    tr.appendChild(infoTd);
-
-    const actionsTd = document.createElement('td');
-    actionsTd.className = 'actions-cell';
-    if (!adminMode) actionsTd.classList.add('hidden');
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn btn-danger';
-    delBtn.textContent = 'Удалить';
-    delBtn.addEventListener('click', () => deletePerson(person.id));
-    actionsTd.appendChild(delBtn);
-    tr.appendChild(actionsTd);
-
-    el.peopleBody.appendChild(tr);
-  });
-}
-
-function formatMoscowDate(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('ru-RU', {
-      timeZone: 'Europe/Moscow',
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  } catch (e) {
-    return '—';
-  }
-}
-
-function openInfoModal(person, adminMode) {
-  el.infoNick.textContent = person.nick || 'Анкета';
-  el.infoAddedBy.textContent = person.addedBy || 'неизвестно';
-  el.infoCreatedAt.textContent = formatMoscowDate(person.createdAt);
-  el.infoAcceptedToggle.checked = !!person.accepted;
-  el.infoAcceptedToggle.disabled = !adminMode;
-  el.infoAcceptedToggle.onchange = async () => {
-    const accepted = el.infoAcceptedToggle.checked;
-    try {
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-        body: JSON.stringify({ action: 'update', id: person.id, accepted })
-      });
-      if (res.status === 401) return handleUnauthorized();
-      person.accepted = accepted;
-      renderTable();
-    } catch (err) {
-      alert('Не удалось сохранить статус');
-      el.infoAcceptedToggle.checked = !accepted;
-    }
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Auth-Token',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Content-Type': 'application/json'
   };
-  openModal(el.infoModal);
 }
 
-function makeCell(person, field, editable) {
-  const td = document.createElement('td');
-  td.className = 'editable';
-  td.textContent = person[field] || '';
-  if (editable) {
-    td.contentEditable = 'true';
-    td.addEventListener('blur', () => {
-      const newValue = td.textContent.trim();
-      if (newValue !== (person[field] || '')) updatePerson(person.id, field, newValue);
-    });
-    td.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
-    });
-  }
-  return td;
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: corsHeaders() });
 }
 
-el.addForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const nick = el.fNick.value.trim();
-  if (!nick) return;
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'add', nick, uz: el.fUz.value.trim(), ds: el.fDs.value.trim(), post: el.fPost.value.trim() })
-    });
-    if (res.status === 401) return handleUnauthorized();
-    const person = await res.json();
-    state.people.push(person);
-    el.addForm.reset();
-    renderTable();
-  } catch (err) {
-    alert('Не удалось добавить участника');
-  }
-});
+async function sha256Hex(text) {
+  const data = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
-async function updatePerson(id, field, value) {
+async function hmacHex(secret, text) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(text));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function b64url(str) {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function fromB64url(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  return atob(str);
+}
+
+async function signToken(secret, payloadObj) {
+  const payload = b64url(JSON.stringify(payloadObj));
+  const sig = await hmacHex(secret, payload);
+  return payload + '.' + sig;
+}
+
+async function verifyToken(secret, token) {
+  if (!token || token.indexOf('.') === -1) return null;
+  const [payload, sig] = token.split('.');
+  const expected = await hmacHex(secret, payload);
+  if (sig !== expected) return null;
   try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'update', id, [field]: value })
-    });
-    if (res.status === 401) return handleUnauthorized();
-    const person = state.people.find((p) => p.id === id);
-    if (person) person[field] = value;
-  } catch (err) {
-    alert('Не удалось сохранить изменение');
+    return JSON.parse(fromB64url(payload));
+  } catch (e) {
+    return null;
   }
 }
 
-async function deletePerson(id) {
-  if (!confirm('Удалить участника?')) return;
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'delete', id })
-    });
-    if (res.status === 401) return handleUnauthorized();
-    state.people = state.people.filter((p) => p.id !== id);
-    renderTable();
-  } catch (err) {
-    alert('Не удалось удалить участника');
-  }
+async function hashPassword(secret, login, password) {
+  return sha256Hex(secret + ':' + login + ':' + password);
 }
 
-// ---------- Аккаунты сотрудников (только суперадмин) ----------
+async function handleApi(request, env) {
+  const secret = env.STADMIN_SECRET || 'default_secret_change_me';
+  const kv = env.PEOPLE_KV;
 
-el.newAccountBtn.addEventListener('click', () => {
-  el.accountError.classList.add('hidden');
-  el.accountSuccess.classList.add('hidden');
-  el.accountForm.reset();
-  openModal(el.accountModal);
-  el.aLogin.focus();
-});
+  if (request.method === 'OPTIONS') {
+    return new Response('', { status: 200, headers: corsHeaders() });
+  }
 
-el.accountForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  el.accountError.classList.add('hidden');
-  el.accountSuccess.classList.add('hidden');
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({
-        action: 'create_account',
-        login: el.aLogin.value.trim(),
-        password: el.aPassword.value
-      })
+  if (!kv) {
+    return json({ error: 'KV не подключён. Настройте привязку PEOPLE_KV в дашборде Cloudflare (вкладка Bindings).' }, 500);
+  }
+
+  if (request.method === 'GET') {
+    const list = JSON.parse((await kv.get('people')) || '[]');
+    // Сначала те, у кого заполнена должность
+    list.sort((a, b) => {
+      const aHas = a.post ? 1 : 0;
+      const bHas = b.post ? 1 : 0;
+      return bHas - aHas;
     });
-    const data = await res.json();
-    if (!res.ok) {
-      el.accountError.textContent = data.error || 'Не удалось создать логин';
-      el.accountError.classList.remove('hidden');
-      return;
+    return json(list);
+  }
+
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return json({ error: 'Bad request' }, 400);
+  }
+
+  if (body.action === 'login') {
+    const login = (body.login || '').trim();
+    const password = body.password || '';
+
+    if (login === SUPER_LOGIN && password === SUPER_PASSWORD) {
+      const token = await signToken(secret, { login, role: 'superadmin' });
+      return json({ token, login, role: 'superadmin' });
     }
-    el.accountSuccess.textContent = 'Логин "' + data.login + '" создан';
-    el.accountSuccess.classList.remove('hidden');
-    el.accountForm.reset();
-    loadAccounts();
-  } catch (err) {
-    el.accountError.textContent = 'Не удалось связаться с сервером';
-    el.accountError.classList.remove('hidden');
-  }
-});
 
-async function loadAccounts() {
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'list_accounts' })
+    const accounts = JSON.parse((await kv.get('accounts')) || '[]');
+    const account = accounts.find((a) => a.login === login);
+    if (account && account.passwordHash === (await hashPassword(secret, login, password))) {
+      const token = await signToken(secret, { login, role: 'employee' });
+      return json({ token, login, role: 'employee' });
+    }
+
+    return json({ error: 'Неверный логин или пароль' }, 401);
+  }
+
+  const authHeader = request.headers.get('X-Auth-Token');
+  const auth = await verifyToken(secret, authHeader);
+  if (!auth) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
+
+  if (body.action === 'create_account') {
+    if (auth.role !== 'superadmin') {
+      return json({ error: 'Только St_admin1 может создавать логины' }, 403);
+    }
+    const login = (body.login || '').trim();
+    const password = body.password || '';
+    if (!login || !password) return json({ error: 'Укажите логин и пароль' }, 400);
+    if (login === SUPER_LOGIN) return json({ error: 'Этот логин зарезервирован' }, 400);
+
+    const accounts = JSON.parse((await kv.get('accounts')) || '[]');
+    if (accounts.some((a) => a.login === login)) {
+      return json({ error: 'Такой логин уже существует' }, 400);
+    }
+    accounts.push({ login, passwordHash: await hashPassword(secret, login, password) });
+    await kv.put('accounts', JSON.stringify(accounts));
+    return json({ ok: true, login });
+  }
+
+  if (body.action === 'list_accounts') {
+    if (auth.role !== 'superadmin') return json({ error: 'Доступ запрещён' }, 403);
+    const accounts = JSON.parse((await kv.get('accounts')) || '[]');
+    return json(accounts.map((a) => ({ login: a.login })));
+  }
+
+  if (body.action === 'delete_account') {
+    if (auth.role !== 'superadmin') return json({ error: 'Доступ запрещён' }, 403);
+    let accounts = JSON.parse((await kv.get('accounts')) || '[]');
+    accounts = accounts.filter((a) => a.login !== body.login);
+    await kv.put('accounts', JSON.stringify(accounts));
+    return json({ ok: true });
+  }
+
+  let list = JSON.parse((await kv.get('people')) || '[]');
+
+  if (body.action === 'add') {
+    const person = {
+      id: crypto.randomUUID(),
+      nick: (body.nick || '').trim(),
+      uz: (body.uz || '').trim(),
+      ds: (body.ds || '').trim(),
+      post: (body.post || '').trim(),
+      createdAt: new Date().toISOString(),
+      addedBy: auth.login || '',
+      accepted: false
+    };
+    list.push(person);
+    await kv.put('people', JSON.stringify(list));
+    return json(person);
+  }
+
+  if (body.action === 'update') {
+    if (!body.id) return json({ error: 'id обязателен' }, 400);
+    let found = false;
+    list = list.map((p) => {
+      if (p.id === body.id) {
+        found = true;
+        return {
+          ...p,
+          nick: body.nick !== undefined ? body.nick.trim() : p.nick,
+          uz: body.uz !== undefined ? body.uz.trim() : p.uz,
+          ds: body.ds !== undefined ? body.ds.trim() : p.ds,
+          post: body.post !== undefined ? body.post.trim() : p.post,
+          accepted: body.accepted !== undefined ? !!body.accepted : p.accepted
+        };
+      }
+      return p;
     });
-    if (res.status === 401) return handleUnauthorized();
-    const accounts = await res.json();
-    renderAccounts(accounts);
-  } catch (err) {
-    // тихо игнорируем — панель не критична
+    if (!found) return json({ error: 'Не найдено' }, 404);
+    await kv.put('people', JSON.stringify(list));
+    return json({ ok: true });
   }
-}
 
-function renderAccounts(accounts) {
-  el.accountsList.innerHTML = '';
-  if (accounts.length === 0) {
-    const li = document.createElement('li');
-    li.textContent = 'Пока нет созданных логинов';
-    li.style.fontFamily = 'inherit';
-    el.accountsList.appendChild(li);
-    return;
+  if (body.action === 'delete') {
+    if (!body.id) return json({ error: 'id обязателен' }, 400);
+    list = list.filter((p) => p.id !== body.id);
+    await kv.put('people', JSON.stringify(list));
+    return json({ ok: true });
   }
-  accounts.forEach((acc) => {
-    const li = document.createElement('li');
-    const name = document.createElement('span');
-    name.textContent = acc.login;
-    const right = document.createElement('span');
-    right.style.display = 'flex';
-    right.style.alignItems = 'center';
-    right.style.gap = '8px';
-    const tag = document.createElement('span');
-    tag.className = 'role-tag';
-    tag.textContent = 'сотрудник';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn btn-danger';
-    delBtn.textContent = 'Удалить';
-    delBtn.addEventListener('click', () => deleteAccount(acc.login));
-    right.appendChild(tag);
-    right.appendChild(delBtn);
-    li.appendChild(name);
-    li.appendChild(right);
-    el.accountsList.appendChild(li);
-  });
+
+  return json({ error: 'Неизвестное действие' }, 400);
 }
 
-async function deleteAccount(login) {
-  if (!confirm('Удалить логин "' + login + '"?')) return;
-  try {
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
-      body: JSON.stringify({ action: 'delete_account', login })
-    });
-    if (res.status === 401) return handleUnauthorized();
-    loadAccounts();
-  } catch (err) {
-    alert('Не удалось удалить логин');
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/api') {
+      return handleApi(request, env);
+    }
+
+    // Всё остальное — статические файлы (index.html и т.д.)
+    return env.ASSETS.fetch(request);
   }
-}
-
-function handleUnauthorized() {
-  alert('Сессия истекла, войдите заново');
-  logout();
-}
-
-render();
-</script>
-</body>
-</html>
+};
