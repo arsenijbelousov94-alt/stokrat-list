@@ -169,7 +169,9 @@ async function handleApi(request, env) {
       uz: (body.uz || '').trim(),
       ds: (body.ds || '').trim(),
       post: (body.post || '').trim(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      addedBy: auth.login || '',
+      accepted: false
     };
     list.push(person);
     await kv.put('people', JSON.stringify(list));
@@ -187,7 +189,8 @@ async function handleApi(request, env) {
           nick: body.nick !== undefined ? body.nick.trim() : p.nick,
           uz: body.uz !== undefined ? body.uz.trim() : p.uz,
           ds: body.ds !== undefined ? body.ds.trim() : p.ds,
-          post: body.post !== undefined ? body.post.trim() : p.post
+          post: body.post !== undefined ? body.post.trim() : p.post,
+          accepted: body.accepted !== undefined ? !!body.accepted : p.accepted
         };
       }
       return p;
