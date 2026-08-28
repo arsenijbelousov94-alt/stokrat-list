@@ -141,7 +141,7 @@ async function handleTelegramWebhook(request, env) {
     delete pending[code];
     await kv.put('telegram_pending', JSON.stringify(pending));
 
-    await sendTelegramMessage(env, chatId, `✅ Telegram привязан к аккаунту «${record.login}». Уведомления о непринятых заявках будут приходить сюда 2 раза в день.`);
+    await sendTelegramMessage(env, chatId, `✅ Telegram привязан к аккаунту «${record.login}». Уведомления о непринятых заявках будут приходить сюда 4 раза в день (10:00, 12:00, 16:00 и 20:00 МСК).`);
   }
 
   return json({ ok: true });
@@ -358,3 +358,4 @@ export default {
     ctx.waitUntil(handleScheduled(env));
   }
 };
+      
