@@ -69,6 +69,104 @@ async function hashPassword(secret, login, password) {
   return sha256Hex(secret + ':' + login + ':' + password);
 }
 
+function generateLinkCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sendTelegramMessage(env, chatId, text) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  if (!token) return;
+  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text })
+  });
+}
+
+function sortPeople(list) {
+  return [...list].sort((a, b) => {
+    const aHas = a.post ? 1 : 0;
+    const bHas = b.post ? 1 : 0;
+    return bHas - aHas;
+  });
+}
+
+async function handleTelegramWebhook(request, env) {
+  const kv = env.PEOPLE_KV;
+  if (!kv) return json({ ok: true });
+
+  const secretHeader = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+  if (env.TELEGRAM_WEBHOOK_SECRET && secretHeader !== env.TELEGRAM_WEBHOOK_SECRET) {
+    return json({ ok: false }, 401);
+  }
+
+  let update;
+  try {
+    update = await request.json();
+  } catch (e) {
+    return json({ ok: true });
+  }
+
+  const message = update.message;
+  if (!message || !message.text || !message.chat) return json({ ok: true });
+
+  const chatId = message.chat.id;
+  const text = message.text.trim();
+
+  if (text.startsWith('/start')) {
+    const parts = text.split(' ');
+    const code = parts[1];
+
+    if (!code) {
+      await sendTelegramMessage(env, chatId, 'Привет! Чтобы получать уведомления, откройте сайт «Реестр участников», войдите под своим логином и нажмите «Привязать Telegram».');
+      return json({ ok: true });
+    }
+
+    const pending = JSON.parse((await kv.get('telegram_pending')) || '{}');
+    const record = pending[code];
+
+    if (!record || record.expires < Date.now()) {
+      await sendTelegramMessage(env, chatId, 'Код недействителен или устарел. Сгенерируйте новую ссылку на сайте и попробуйте снова.');
+      return json({ ok: true });
+    }
+
+    const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+    bindings[record.login] = chatId;
+    await kv.put('telegram_bindings', JSON.stringify(bindings));
+
+    delete pending[code];
+    await kv.put('telegram_pending', JSON.stringify(pending));
+
+    await sendTelegramMessage(env, chatId, `✅ Telegram привязан к аккаунту «${record.login}». Уведомления о непринятых заявках будут приходить сюда 2 раза в день.`);
+  }
+
+  return json({ ok: true });
+}
+
+async function handleScheduled(env) {
+  const kv = env.PEOPLE_KV;
+  if (!kv) return;
+
+  const list = sortPeople(JSON.parse((await kv.get('people')) || '[]'));
+  const notAccepted = list
+    .map((p, i) => ({ p, num: i + 1 }))
+    .filter((entry) => !entry.p.accepted);
+
+  if (notAccepted.length === 0) return;
+
+  const lines = notAccepted.map(({ p, num }) =>
+    `№${num}. Ник: ${p.nick || '—'} | Юз: ${p.uz || '—'} | ДС: ${p.ds || '—'} | Принял: ${p.addedBy || '—'}`
+  );
+  const text = `⚠️ Не приняты в клан (${notAccepted.length}):\n\n${lines.join('\n')}`;
+
+  const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+  const chatIds = Object.values(bindings);
+  for (const chatId of chatIds) {
+    await sendTelegramMessage(env, chatId, text);
+  }
+}
+
 async function handleApi(request, env) {
   const secret = env.STADMIN_SECRET || 'default_secret_change_me';
   const kv = env.PEOPLE_KV;
@@ -82,13 +180,7 @@ async function handleApi(request, env) {
   }
 
   if (request.method === 'GET') {
-    const list = JSON.parse((await kv.get('people')) || '[]');
-    // Сначала те, у кого заполнена должность
-    list.sort((a, b) => {
-      const aHas = a.post ? 1 : 0;
-      const bHas = b.post ? 1 : 0;
-      return bHas - aHas;
-    });
+    const list = sortPeople(JSON.parse((await kv.get('people')) || '[]'));
     return json(list);
   }
 
@@ -160,6 +252,30 @@ async function handleApi(request, env) {
     return json({ ok: true });
   }
 
+  if (body.action === 'request_telegram_link') {
+    const pending = JSON.parse((await kv.get('telegram_pending')) || '{}');
+    // убираем просроченные коды
+    for (const c in pending) {
+      if (pending[c].expires < Date.now()) delete pending[c];
+    }
+    const code = generateLinkCode();
+    pending[code] = { login: auth.login, expires: Date.now() + 15 * 60 * 1000 };
+    await kv.put('telegram_pending', JSON.stringify(pending));
+    return json({ ok: true, code, botLink: `https://t.me/stokratapp_bot?start=${code}` });
+  }
+
+  if (body.action === 'telegram_status') {
+    const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+    return json({ linked: !!bindings[auth.login] });
+  }
+
+  if (body.action === 'telegram_unlink') {
+    const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+    delete bindings[auth.login];
+    await kv.put('telegram_bindings', JSON.stringify(bindings));
+    return json({ ok: true });
+  }
+
   let list = JSON.parse((await kv.get('people')) || '[]');
 
   if (body.action === 'add') {
@@ -218,7 +334,15 @@ export default {
       return handleApi(request, env);
     }
 
+    if (url.pathname === '/telegram-webhook') {
+      return handleTelegramWebhook(request, env);
+    }
+
     // Всё остальное — статические файлы (index.html и т.д.)
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(handleScheduled(env));
   }
 };
