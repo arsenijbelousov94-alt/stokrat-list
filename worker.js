@@ -261,7 +261,7 @@ async function handleApi(request, env) {
     const code = generateLinkCode();
     pending[code] = { login: auth.login, expires: Date.now() + 15 * 60 * 1000 };
     await kv.put('telegram_pending', JSON.stringify(pending));
-    return json({ ok: true, code, botLink: `https://t.me/stokratapp_bot?start=${code}` });
+    return json({ ok: true, code, botLink: `https://t.me/stokratAdmin_bot?start=${code}` });
   }
 
   if (body.action === 'telegram_status') {
@@ -346,3 +346,4 @@ export default {
     ctx.waitUntil(handleScheduled(env));
   }
 };
+  
