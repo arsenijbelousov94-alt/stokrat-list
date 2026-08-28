@@ -112,6 +112,7 @@
   .accounts-list li { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 13px; background: #0f1115; border: 1px solid var(--panel-border); padding: 6px 10px; border-radius: 6px; }
   .role-tag { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
   td.not-accepted { border: 2px solid var(--danger); border-radius: 6px; }
+  .hint { color: var(--text-dim); font-size: 13px; margin: 4px 0 16px; }
   .btn-info { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 6px 10px; font-size: 12px; }
   .info-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
   .info-row:last-of-type { border-bottom: none; }
@@ -271,6 +272,17 @@ window.onerror = function(msg, url, line, col, error) {
   </div>
 </div>
 
+<!-- Модалка привязки Telegram -->
+<div id="telegram-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="telegram-modal" aria-label="Закрыть">×</button>
+    <h2>Уведомления в Telegram</h2>
+    <p id="tg-status" class="hint">Проверяем статус…</p>
+    <button id="tg-link-btn" class="btn btn-primary btn-full hidden">Привязать Telegram</button>
+    <button id="tg-unlink-btn" class="btn btn-outline btn-full hidden">Отвязать</button>
+  </div>
+</div>
+
 <script>
 const API = '/api';
 
@@ -321,7 +333,12 @@ const el = {
   infoNick: document.getElementById('info-nick'),
   infoAddedBy: document.getElementById('info-added-by'),
   infoCreatedAt: document.getElementById('info-created-at'),
-  infoAcceptedToggle: document.getElementById('info-accepted-toggle')
+  infoAcceptedToggle: document.getElementById('info-accepted-toggle'),
+
+  telegramModal: document.getElementById('telegram-modal'),
+  tgStatus: document.getElementById('tg-status'),
+  tgLinkBtn: document.getElementById('tg-link-btn'),
+  tgUnlinkBtn: document.getElementById('tg-unlink-btn')
 };
 
 document.querySelectorAll('.modal-close').forEach((btn) => {
@@ -380,14 +397,79 @@ function renderAuthArea() {
     badge.className = 'btn btn-outline';
     badge.style.cursor = 'default';
     badge.textContent = state.login + (isSuperAdmin() ? ' · суперадмин' : ' · сотрудник');
+    const tgBtn = document.createElement('button');
+    tgBtn.className = 'btn btn-outline';
+    tgBtn.textContent = 'Telegram';
+    tgBtn.addEventListener('click', openTelegramModal);
     const logoutBtn = document.createElement('button');
     logoutBtn.className = 'btn btn-outline';
     logoutBtn.textContent = 'Выйти';
     logoutBtn.addEventListener('click', logout);
     el.authArea.appendChild(badge);
+    el.authArea.appendChild(tgBtn);
     el.authArea.appendChild(logoutBtn);
   }
 }
+
+// ---------- Telegram-уведомления ----------
+
+async function openTelegramModal() {
+  el.tgStatus.textContent = 'Проверяем статус…';
+  el.tgLinkBtn.classList.add('hidden');
+  el.tgUnlinkBtn.classList.add('hidden');
+  openModal(el.telegramModal);
+
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_status' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.linked) {
+      el.tgStatus.textContent = 'Telegram привязан. Уведомления о непринятых заявках приходят 2 раза в день (10:00 и 20:00 МСК).';
+      el.tgUnlinkBtn.classList.remove('hidden');
+    } else {
+      el.tgStatus.textContent = 'Telegram ещё не привязан. Нажмите кнопку ниже, перейдите в бота и нажмите Start.';
+      el.tgLinkBtn.classList.remove('hidden');
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось проверить статус. Попробуйте ещё раз.';
+  }
+}
+
+el.tgLinkBtn.addEventListener('click', async () => {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'request_telegram_link' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.botLink) {
+      window.open(data.botLink, '_blank');
+      el.tgStatus.textContent = 'Перешли в бота? Нажмите Start там. Затем откройте это окно заново, чтобы увидеть статус.';
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось сгенерировать ссылку. Попробуйте ещё раз.';
+  }
+});
+
+el.tgUnlinkBtn.addEventListener('click', async () => {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_unlink' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    closeModal(el.telegramModal);
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось отвязать. Попробуйте ещё раз.';
+  }
+});
 
 function render() {
   renderAuthArea();
@@ -510,8 +592,8 @@ function formatMoscowDate(iso) {
 }
 
 function openInfoModal(person, adminMode) {
-  el.infoNick.textContent = person.nick || 'Анкета'
-   el.infoAddedBy.textContent = person.addedBy || 'неизвестно';
+  el.infoNick.textContent = person.nick || 'Анкета';
+  el.infoAddedBy.textContent = person.addedBy || 'неизвестно';
   el.infoCreatedAt.textContent = formatMoscowDate(person.createdAt);
   el.infoAcceptedToggle.checked = !!person.accepted;
   el.infoAcceptedToggle.disabled = !adminMode;
