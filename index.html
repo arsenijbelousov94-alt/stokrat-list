@@ -279,6 +279,7 @@ window.onerror = function(msg, url, line, col, error) {
     <h2>Уведомления в Telegram</h2>
     <p id="tg-status" class="hint">Проверяем статус…</p>
     <button id="tg-link-btn" class="btn btn-primary btn-full hidden">Привязать Telegram</button>
+    <button id="tg-test-btn" class="btn btn-outline btn-full hidden">Отправить тестовое сообщение</button>
     <button id="tg-unlink-btn" class="btn btn-outline btn-full hidden">Отвязать</button>
   </div>
 </div>
@@ -338,6 +339,7 @@ const el = {
   telegramModal: document.getElementById('telegram-modal'),
   tgStatus: document.getElementById('tg-status'),
   tgLinkBtn: document.getElementById('tg-link-btn'),
+  tgTestBtn: document.getElementById('tg-test-btn'),
   tgUnlinkBtn: document.getElementById('tg-unlink-btn')
 };
 
@@ -416,6 +418,7 @@ function renderAuthArea() {
 async function openTelegramModal() {
   el.tgStatus.textContent = 'Проверяем статус…';
   el.tgLinkBtn.classList.add('hidden');
+  el.tgTestBtn.classList.add('hidden');
   el.tgUnlinkBtn.classList.add('hidden');
   openModal(el.telegramModal);
 
@@ -429,6 +432,7 @@ async function openTelegramModal() {
     const data = await res.json();
     if (data.linked) {
       el.tgStatus.textContent = 'Telegram привязан. Уведомления о непринятых заявках приходят 2 раза в день (10:00 и 20:00 МСК).';
+      el.tgTestBtn.classList.remove('hidden');
       el.tgUnlinkBtn.classList.remove('hidden');
     } else {
       el.tgStatus.textContent = 'Telegram ещё не привязан. Нажмите кнопку ниже, перейдите в бота и нажмите Start.';
@@ -468,6 +472,26 @@ el.tgUnlinkBtn.addEventListener('click', async () => {
     closeModal(el.telegramModal);
   } catch (err) {
     el.tgStatus.textContent = 'Не удалось отвязать. Попробуйте ещё раз.';
+  }
+});
+
+el.tgTestBtn.addEventListener('click', async () => {
+  el.tgStatus.textContent = 'Отправляем тестовое сообщение…';
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_test' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.ok) {
+      el.tgStatus.textContent = 'Тестовое сообщение отправлено. Проверьте Telegram.';
+    } else {
+      el.tgStatus.textContent = data.error || 'Не удалось отправить сообщение.';
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось отправить сообщение.';
   }
 });
 
