@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Реестр участников</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161923;
+    --panel-border: #262b3a;
+    --text: #e7e9f0;
+    --text-dim: #8a90a6;
+    --accent: #6ee7b7;
+    --accent-dim: #2f4a41;
+    --danger: #ef6a6a;
+    --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 28px; border-bottom: 1px solid var(--panel-border);
+    position: sticky; top: 0; background: rgba(15,17,21,0.92);
+    backdrop-filter: blur(6px); z-index: 10; gap: 12px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .brand-mark {
+    font-family: var(--mono); color: var(--accent); background: var(--accent-dim);
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 15px;
+  }
+  .auth-area { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* Стартовый экран */
+  .landing { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 20px; gap: 22px; }
+  .landing h1 { font-size: 22px; margin: 0; }
+  .landing p { color: var(--text-dim); margin: 0; font-size: 14px; }
+  .landing-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  .big-btn {
+    padding: 16px 26px; font-size: 15px; border-radius: 12px; min-width: 220px;
+  }
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
+  .landing-links { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .landing-links .btn { min-width: 220px; padding: 12px 22px; font-size: 14px; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+  }
+  .panel h2 {
+    margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .panel-head h2 { margin: 0; }
+  .count {
+    font-family: var(--mono); color: var(--accent); background: var(--accent-dim);
+    padding: 2px 10px; border-radius: 20px; font-size: 13px;
+  }
+  .row-form { display: flex; flex-wrap: wrap; gap: 10px; }
+  .row-form input { flex: 1 1 140px; }
+  input[type="text"], input[type="password"] {
+    background: #0f1115; border: 1px solid var(--panel-border); color: var(--text);
+    padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; width: 100%;
+  }
+  input:focus { border-color: var(--accent); }
+  .btn {
+    border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px;
+    font-weight: 600; cursor: pointer; transition: opacity .15s ease;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #0b1310; }
+  .btn-outline { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); padding: 6px 10px; font-size: 12px; }
+  .btn-full { width: 100%; margin-top: 4px; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+  td.editable { font-family: var(--mono); }
+  td[contenteditable="true"] { cursor: text; border-radius: 4px; }
+  td[contenteditable="true"]:focus { outline: 1px solid var(--accent); background: rgba(110,231,183,0.06); }
+  .col-actions { width: 90px; text-align: right; }
+  td.actions-cell { text-align: right; white-space: nowrap; }
+  .empty { color: var(--text-dim); font-size: 14px; padding: 10px 0; }
+  .hidden { display: none !important; }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(5,6,9,0.7);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px;
+    padding: 26px; width: 100%; max-width: 340px; position: relative;
+  }
+  .modal h2 { margin: 0 0 16px; font-size: 16px; }
+  .modal form { display: flex; flex-direction: column; gap: 10px; }
+  .modal-close {
+    position: absolute; top: 12px; right: 14px; background: none; border: none;
+    color: var(--text-dim); font-size: 20px; cursor: pointer; line-height: 1;
+  }
+  .error { color: var(--danger); font-size: 13px; margin: 4px 0 0; }
+  .success { color: var(--accent); font-size: 13px; margin: 4px 0 0; }
+  .accounts-list { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 8px; max-height: 160px; overflow-y: auto; }
+  .accounts-list li { display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 13px; background: #0f1115; border: 1px solid var(--panel-border); padding: 6px 10px; border-radius: 6px; }
+  .role-tag { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
+  td.not-accepted { border: 2px solid var(--danger); border-radius: 6px; }
+  .hint { color: var(--text-dim); font-size: 13px; margin: 4px 0 16px; }
+  .modal-wide { max-width: 640px; }
+  .list-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .search-input {
+    flex: 1 1 220px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--panel-border);
+    background: #0f1115; color: var(--text); font-size: 13px;
+  }
+  .filter-select {
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--panel-border);
+    background: #0f1115; color: var(--text); font-size: 13px;
+  }
+  .stats-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
+  .stats-row:last-of-type { border-bottom: none; }
+  .stats-row .val { font-family: var(--mono); color: var(--accent); }
+  .stats-section-title { font-size: 13px; color: var(--text-dim); margin: 16px 0 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .logs-list { max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+  .log-entry {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--text-dim);
+    background: #0f1115; border: 1px solid var(--panel-border); border-radius: 6px;
+    padding: 8px 10px; margin: 0;
+  }
+  .btn-info { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 6px 10px; font-size: 12px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 14px; }
+  .info-row:last-of-type { border-bottom: none; }
+  .info-label { color: var(--text-dim); font-size: 13px; }
+  .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch-track {
+    position: absolute; cursor: pointer; inset: 0; background: #3a3f52;
+    border-radius: 26px; transition: background .15s ease;
+  }
+  .switch-track::before {
+    content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px;
+    background: #e7e9f0; border-radius: 50%; transition: transform .15s ease;
+  }
+  .switch input:checked + .switch-track { background: var(--accent-dim); }
+  .switch input:checked + .switch-track::before { transform: translateX(20px); background: var(--accent); }
+  .switch input:disabled + .switch-track { opacity: 0.5; cursor: default; }
+  @media (max-width: 560px) {
+    .topbar { padding: 14px 16px; }
+    .big-btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<script>
+window.onerror = function(msg, url, line, col, error) {
+  var box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b91c1c;color:#fff;padding:16px;font-family:monospace;font-size:13px;white-space:pre-wrap;z-index:9999;';
+  box.textContent = 'ОШИБКА JS: ' + msg + ' (строка ' + line + ', столбец ' + col + ')';
+  document.body.prepend(box);
+  return false;
+};
+</script>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">#</span>
+    <span>Реестр участников</span>
+  </div>
+  <div id="auth-area" class="auth-area"></div>
+</header>
+
+<main class="wrap">
+
+  <!-- Стартовый экран -->
+  <section id="landing" class="landing">
+    <h1>Что вы хотите сделать?</h1>
+    <p>Просмотреть список участников или войти как сотрудник, чтобы его редактировать.</p>
+    <div class="landing-buttons">
+      <button id="btn-login" class="btn btn-primary big-btn">Войти как сотрудник</button>
+      <button id="btn-view" class="btn btn-outline big-btn">Посмотреть список</button>
+    </div>
+    <div class="landing-links">
+      <a href="https://stokratregistration.netlify.app/" target="_blank" rel="noopener" class="btn btn-outline">Подать заявку на вступление</a>
+      <a href="https://web.telegram.org/k/#@stokratapp_bot" target="_blank" rel="noopener" class="btn btn-outline">Перейти в Telegram-бот</a>
+    </div>
+  </section>
+
+  <!-- Панель создания логинов сотрудников (только суперадмин) -->
+  <section id="accounts-panel" class="panel hidden">
+    <div class="panel-head">
+      <h2>Логины сотрудников</h2>
+      <button id="new-account-btn" class="btn btn-outline">+ Создать логин</button>
+    </div>
+    <p style="color:var(--text-dim); font-size:13px; margin:0;">Только St_admin1 может создавать логины для входа.</p>
+    <ul id="accounts-list" class="accounts-list"></ul>
+  </section>
+
+  <!-- Форма добавления участника (для вошедших) -->
+  <section id="add-panel" class="panel hidden">
+    <h2>Добавить участника</h2>
+    <form id="add-form" class="row-form">
+      <input type="text" id="f-nick" placeholder="Ник" autocomplete="off" required>
+      <input type="text" id="f-uz" placeholder="Юз" autocomplete="off">
+      <input type="text" id="f-ds" placeholder="ДС" autocomplete="off">
+      <input type="text" id="f-post" placeholder="Должность" autocomplete="off">
+      <button type="submit" class="btn btn-primary">Добавить</button>
+    </form>
+  </section>
+
+  <!-- Список -->
+  <section id="list-panel" class="panel hidden">
+    <div class="panel-head">
+      <h2>Список</h2>
+      <span id="count" class="count">0</span>
+    </div>
+    <div class="list-controls">
+      <input type="text" id="search-input" class="search-input" placeholder="Поиск по нику, юзу, дс, должности">
+      <select id="filter-select" class="filter-select">
+        <option value="all">Все</option>
+        <option value="accepted">Принятые</option>
+        <option value="not-accepted">Не принятые</option>
+      </select>
+      <button id="export-csv-btn" class="btn btn-outline">Экспорт CSV</button>
+      <button id="stats-btn" class="btn btn-outline">Статистика</button>
+    </div>
+    <div id="empty-state" class="empty hidden">Список пока пуст.</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Ник</th>
+            <th>Юз</th>
+            <th>ДС</th>
+            <th>Должность</th>
+            <th class="col-actions"></th>
+            <th class="col-actions admin-only hidden"></th>
+          </tr>
+        </thead>
+        <tbody id="people-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- Модалка входа -->
+<div id="login-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="login-modal" aria-label="Закрыть">×</button>
+    <h2>Вход для сотрудников</h2>
+    <form id="login-form">
+      <input type="text" id="l-login" placeholder="Логин" autocomplete="username" required>
+      <input type="password" id="l-password" placeholder="Пароль" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-full">Войти</button>
+      <p id="login-error" class="error hidden"></p>
+    </form>
+  </div>
+</div>
+
+<!-- Модалка создания логина сотрудника -->
+<div id="account-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="account-modal" aria-label="Закрыть">×</button>
+    <h2>Новый логин сотрудника</h2>
+    <form id="account-form">
+      <input type="text" id="a-login" placeholder="Логин" autocomplete="off" required>
+      <input type="text" id="a-password" placeholder="Пароль" autocomplete="off" required>
+      <button type="submit" class="btn btn-primary btn-full">Создать</button>
+      <p id="account-error" class="error hidden"></p>
+      <p id="account-success" class="success hidden"></p>
+    </form>
+  </div>
+</div>
+
+<!-- Модалка "О анкете" -->
+<div id="info-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="info-modal" aria-label="Закрыть">×</button>
+    <h2 id="info-nick">Анкета</h2>
+    <div class="info-row">
+      <span class="info-label">Добавил</span>
+      <span id="info-added-by">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Дата принятия (МСК)</span>
+      <span id="info-created-at">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Принят в клан</span>
+      <label class="switch">
+        <input type="checkbox" id="info-accepted-toggle">
+        <span class="switch-track"></span>
+      </label>
+    </div>
+    <div id="info-request-row" class="info-row hidden">
+      <span class="info-label">Запрос отправлен</span>
+      <label class="switch">
+        <input type="checkbox" id="info-request-toggle">
+        <span class="switch-track"></span>
+      </label>
+    </div>
+    <p id="info-request-status" class="hint hidden"></p>
+  </div>
+</div>
+
+<!-- Модалка привязки Telegram -->
+<div id="telegram-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="telegram-modal" aria-label="Закрыть">×</button>
+    <h2>Уведомления в Telegram</h2>
+    <p id="tg-status" class="hint">Проверяем статус…</p>
+    <button id="tg-link-btn" class="btn btn-primary btn-full hidden">Привязать Telegram</button>
+    <button id="tg-test-btn" class="btn btn-outline btn-full hidden">Отправить тестовое сообщение</button>
+    <button id="tg-unlink-btn" class="btn btn-outline btn-full hidden">Отвязать</button>
+  </div>
+</div>
+
+<!-- Модалка логов -->
+<div id="logs-modal" class="modal-overlay hidden">
+  <div class="modal modal-wide">
+    <button class="modal-close" data-close="logs-modal" aria-label="Закрыть">×</button>
+    <h2>Логи изменений</h2>
+    <div id="logs-list" class="logs-list">
+      <p class="hint">Загружаем…</p>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка статистики -->
+<div id="stats-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" data-close="stats-modal" aria-label="Закрыть">×</button>
+    <h2>Статистика</h2>
+    <div id="stats-content"></div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+
+const state = {
+  token: sessionStorage.getItem('st_token') || null,
+  role: sessionStorage.getItem('st_role') || null,
+  login: sessionStorage.getItem('st_login') || null,
+  mode: null, // 'guest' | 'admin' | null (landing)
+  people: []
+};
+
+const el = {
+  authArea: document.getElementById('auth-area'),
+  landing: document.getElementById('landing'),
+  btnLogin: document.getElementById('btn-login'),
+  btnView: document.getElementById('btn-view'),
+
+  loginModal: document.getElementById('login-modal'),
+  loginForm: document.getElementById('login-form'),
+  loginLogin: document.getElementById('l-login'),
+  loginPassword: document.getElementById('l-password'),
+  loginError: document.getElementById('login-error'),
+
+  accountsPanel: document.getElementById('accounts-panel'),
+  newAccountBtn: document.getElementById('new-account-btn'),
+  accountModal: document.getElementById('account-modal'),
+  accountForm: document.getElementById('account-form'),
+  aLogin: document.getElementById('a-login'),
+  aPassword: document.getElementById('a-password'),
+  accountError: document.getElementById('account-error'),
+  accountSuccess: document.getElementById('account-success'),
+  accountsList: document.getElementById('accounts-list'),
+
+  addPanel: document.getElementById('add-panel'),
+  addForm: document.getElementById('add-form'),
+  fNick: document.getElementById('f-nick'),
+  fUz: document.getElementById('f-uz'),
+  fDs: document.getElementById('f-ds'),
+  fPost: document.getElementById('f-post'),
+
+  listPanel: document.getElementById('list-panel'),
+  peopleBody: document.getElementById('people-body'),
+  emptyState: document.getElementById('empty-state'),
+  count: document.getElementById('count'),
+  actionsHeader: document.querySelector('.col-actions.admin-only'),
+  searchInput: document.getElementById('search-input'),
+  filterSelect: document.getElementById('filter-select'),
+  exportCsvBtn: document.getElementById('export-csv-btn'),
+  statsBtn: document.getElementById('stats-btn'),
+  statsModal: document.getElementById('stats-modal'),
+  statsContent: document.getElementById('stats-content'),
+
+  infoModal: document.getElementById('info-modal'),
+  infoNick: document.getElementById('info-nick'),
+  infoAddedBy: document.getElementById('info-added-by'),
+  infoCreatedAt: document.getElementById('info-created-at'),
+  infoAcceptedToggle: document.getElementById('info-accepted-toggle'),
+  infoRequestRow: document.getElementById('info-request-row'),
+  infoRequestToggle: document.getElementById('info-request-toggle'),
+  infoRequestStatus: document.getElementById('info-request-status'),
+
+  logsModal: document.getElementById('logs-modal'),
+  logsList: document.getElementById('logs-list'),
+
+  telegramModal: document.getElementById('telegram-modal'),
+  tgStatus: document.getElementById('tg-status'),
+  tgLinkBtn: document.getElementById('tg-link-btn'),
+  tgTestBtn: document.getElementById('tg-test-btn'),
+  tgUnlinkBtn: document.getElementById('tg-unlink-btn')
+};
+
+document.querySelectorAll('.modal-close').forEach((btn) => {
+  btn.addEventListener('click', () => closeModal(document.getElementById(btn.dataset.close)));
+});
+document.querySelectorAll('.modal-overlay').forEach((overlay) => {
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(overlay); });
+});
+function openModal(overlay) { overlay.classList.remove('hidden'); }
+function closeModal(overlay) { overlay.classList.add('hidden'); }
+
+function isLoggedIn() { return !!state.token; }
+function isSuperAdmin() { return state.role === 'superadmin'; }
+
+// ---------- Навигация между экранами ----------
+
+function goLanding() {
+  state.mode = null;
+  render();
+}
+function goGuest() {
+  state.mode = 'guest';
+  loadPeople();
+  render();
+}
+function goAdmin() {
+  state.mode = 'admin';
+  loadPeople();
+  if (isSuperAdmin()) loadAccounts();
+  render();
+}
+
+el.btnView.addEventListener('click', goGuest);
+el.btnLogin.addEventListener('click', () => {
+  if (isLoggedIn()) { goAdmin(); return; }
+  el.loginError.classList.add('hidden');
+  openModal(el.loginModal);
+  el.loginLogin.focus();
+});
+
+// ---------- Рендер шапки ----------
+
+function renderAuthArea() {
+  el.authArea.innerHTML = '';
+
+  if (state.mode) {
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn btn-outline';
+    backBtn.textContent = '← Назад';
+    backBtn.addEventListener('click', goLanding);
+    el.authArea.appendChild(backBtn);
+  }
+
+  if (isLoggedIn()) {
+    const badge = document.createElement('span');
+    badge.className = 'btn btn-outline';
+    badge.style.cursor = 'default';
+    badge.textContent = state.login + (isSuperAdmin() ? ' · суперадмин' : ' · сотрудник');
+    const tgBtn = document.createElement('button');
+    tgBtn.className = 'btn btn-outline';
+    tgBtn.textContent = 'Telegram';
+    tgBtn.addEventListener('click', openTelegramModal);
+    const logsBtn = document.createElement('button');
+    logsBtn.className = 'btn btn-outline';
+    logsBtn.textContent = 'Логи';
+    logsBtn.addEventListener('click', openLogsModal);
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn btn-outline';
+    logoutBtn.textContent = 'Выйти';
+    logoutBtn.addEventListener('click', logout);
+    el.authArea.appendChild(badge);
+    el.authArea.appendChild(tgBtn);
+    el.authArea.appendChild(logsBtn);
+    el.authArea.appendChild(logoutBtn);
+  }
+}
+
+// ---------- Логи изменений ----------
+
+function formatLogEntry(entry) {
+  const when = formatMoscowDate(entry.ts);
+  const who = entry.actor || 'неизвестно';
+  const nick = entry.nick || '(без ника)';
+
+  if (entry.action === 'add') {
+    return `[${when}] ${who} добавил анкету «${nick}»`;
+  }
+  if (entry.action === 'delete') {
+    return `[${when}] ${who} удалил анкету «${nick}»`;
+  }
+  if (entry.action === 'update') {
+    const fieldNames = {
+      nick: 'ник', uz: 'юз', ds: 'дс', post: 'должность',
+      accepted: 'принят в клан', requestSent: 'запрос отправлен'
+    };
+    const parts = (entry.changes || []).map((c) => {
+      const label = fieldNames[c.field] || c.field;
+      const fmt = (v) => {
+        if (typeof v === 'boolean') return v ? 'да' : 'нет';
+        return v || '(пусто)';
+      };
+      return `${label}: «${fmt(c.from)}» → «${fmt(c.to)}»`;
+    });
+    return `[${when}] ${who} изменил «${nick}»: ${parts.join('; ')}`;
+  }
+  return `[${when}] ${who}: ${entry.action}`;
+}
+
+async function openLogsModal() {
+  el.logsList.innerHTML = '<p class="hint">Загружаем…</p>';
+  openModal(el.logsModal);
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'list_logs' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const logs = await res.json();
+    if (!Array.isArray(logs) || logs.length === 0) {
+      el.logsList.innerHTML = '<p class="hint">Пока нет записей.</p>';
+      return;
+    }
+    el.logsList.innerHTML = '';
+    logs.forEach((entry) => {
+      const p = document.createElement('p');
+      p.className = 'log-entry';
+      p.textContent = formatLogEntry(entry);
+      el.logsList.appendChild(p);
+    });
+  } catch (err) {
+    el.logsList.innerHTML = '<p class="hint">Не удалось загрузить логи.</p>';
+  }
+}
+
+// ---------- Telegram-уведомления ----------
+
+async function openTelegramModal() {
+  el.tgStatus.textContent = 'Проверяем статус…';
+  el.tgLinkBtn.classList.add('hidden');
+  el.tgTestBtn.classList.add('hidden');
+  el.tgUnlinkBtn.classList.add('hidden');
+  openModal(el.telegramModal);
+
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_status' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.linked) {
+      el.tgStatus.textContent = 'Telegram привязан. Уведомления о непринятых заявках приходят 4 раза в день (10:00, 12:00, 16:00 и 20:00 МСК).';
+      el.tgTestBtn.classList.remove('hidden');
+      el.tgUnlinkBtn.classList.remove('hidden');
+    } else {
+      el.tgStatus.textContent = 'Telegram ещё не привязан. Нажмите кнопку ниже, перейдите в бота и нажмите Start.';
+      el.tgLinkBtn.classList.remove('hidden');
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось проверить статус. Попробуйте ещё раз.';
+  }
+}
+
+el.tgLinkBtn.addEventListener('click', async () => {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'request_telegram_link' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.botLink) {
+      window.open(data.botLink, '_blank');
+      el.tgStatus.textContent = 'Перешли в бота? Нажмите Start там. Затем откройте это окно заново, чтобы увидеть статус.';
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось сгенерировать ссылку. Попробуйте ещё раз.';
+  }
+});
+
+el.tgUnlinkBtn.addEventListener('click', async () => {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_unlink' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    closeModal(el.telegramModal);
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось отвязать. Попробуйте ещё раз.';
+  }
+});
+
+el.tgTestBtn.addEventListener('click', async () => {
+  el.tgStatus.textContent = 'Отправляем тестовое сообщение…';
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'telegram_test' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const data = await res.json();
+    if (data.ok) {
+      el.tgStatus.textContent = 'Тестовое сообщение отправлено. Проверьте Telegram.';
+    } else {
+      el.tgStatus.textContent = data.error || 'Не удалось отправить сообщение.';
+    }
+  } catch (err) {
+    el.tgStatus.textContent = 'Не удалось отправить сообщение.';
+  }
+});
+
+function render() {
+  renderAuthArea();
+
+  el.landing.classList.toggle('hidden', !!state.mode);
+  el.listPanel.classList.toggle('hidden', !state.mode);
+
+  const adminMode = state.mode === 'admin' && isLoggedIn();
+  el.addPanel.classList.toggle('hidden', !adminMode);
+  el.accountsPanel.classList.toggle('hidden', !(adminMode && isSuperAdmin()));
+  el.actionsHeader.classList.toggle('hidden', !adminMode);
+
+  renderTable();
+}
+
+function logout() {
+  state.token = null;
+  state.role = null;
+  state.login = null;
+  sessionStorage.removeItem('st_token');
+  sessionStorage.removeItem('st_role');
+  sessionStorage.removeItem('st_login');
+  goLanding();
+}
+
+// ---------- Вход ----------
+
+el.loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  el.loginError.classList.add('hidden');
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'login',
+        login: el.loginLogin.value.trim(),
+        password: el.loginPassword.value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      el.loginError.textContent = data.error || 'Ошибка входа';
+      el.loginError.classList.remove('hidden');
+      return;
+    }
+    state.token = data.token;
+    state.role = data.role;
+    state.login = data.login;
+    sessionStorage.setItem('st_token', data.token);
+    sessionStorage.setItem('st_role', data.role);
+    sessionStorage.setItem('st_login', data.login);
+    closeModal(el.loginModal);
+    el.loginForm.reset();
+    goAdmin();
+  } catch (err) {
+    el.loginError.textContent = 'Не удалось связаться с сервером';
+    el.loginError.classList.remove('hidden');
+  }
+});
+
+// ---------- Список участников ----------
+
+async function loadPeople() {
+  const res = await fetch(API);
+  state.people = await res.json();
+  renderTable();
+}
+
+function getFilteredPeople() {
+  let list = state.people;
+  const query = (el.searchInput && el.searchInput.value || '').trim().toLowerCase();
+  const filter = el.filterSelect ? el.filterSelect.value : 'all';
+
+  if (query) {
+    list = list.filter((p) =>
+      (p.nick || '').toLowerCase().includes(query) ||
+      (p.uz || '').toLowerCase().includes(query) ||
+      (p.ds || '').toLowerCase().includes(query) ||
+      (p.post || '').toLowerCase().includes(query)
+    );
+  }
+  if (filter === 'accepted') list = list.filter((p) => p.accepted);
+  if (filter === 'not-accepted') list = list.filter((p) => !p.accepted);
+
+  return list;
+}
+
+function renderTable() {
+  el.peopleBody.innerHTML = '';
+  const visible = getFilteredPeople();
+  el.count.textContent = state.people.length;
+  el.emptyState.classList.toggle('hidden', state.people.length > 0);
+
+  const adminMode = state.mode === 'admin' && isLoggedIn();
+
+  visible.forEach((person) => {
+    const tr = document.createElement('tr');
+    const nickTd = makeCell(person, 'nick', adminMode);
+    if (!person.accepted) nickTd.classList.add('not-accepted');
+    tr.appendChild(nickTd);
+    tr.appendChild(makeCell(person, 'uz', adminMode));
+    tr.appendChild(makeCell(person, 'ds', adminMode));
+    tr.appendChild(makeCell(person, 'post', adminMode));
+
+    const infoTd = document.createElement('td');
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'btn btn-info';
+    infoBtn.textContent = 'Об анкете';
+    infoBtn.addEventListener('click', () => openInfoModal(person, adminMode));
+    infoTd.appendChild(infoBtn);
+    tr.appendChild(infoTd);
+
+    const actionsTd = document.createElement('td');
+    actionsTd.className = 'actions-cell';
+    if (!adminMode) actionsTd.classList.add('hidden');
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger';
+    delBtn.textContent = 'Удалить';
+    delBtn.addEventListener('click', () => deletePerson(person.id));
+    actionsTd.appendChild(delBtn);
+    tr.appendChild(actionsTd);
+
+    el.peopleBody.appendChild(tr);
+  });
+}
+
+function formatMoscowDate(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch (e) {
+    return '—';
+  }
+}
+
+// ---------- Поиск / фильтр ----------
+
+if (el.searchInput) el.searchInput.addEventListener('input', renderTable);
+if (el.filterSelect) el.filterSelect.addEventListener('change', renderTable);
+
+// ---------- Экспорт CSV ----------
+
+function csvEscape(value) {
+  const str = String(value == null ? '' : value);
+  if (/[",\n;]/.test(str)) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
+
+function exportCSV() {
+  const rows = getFilteredPeople();
+  const header = ['Ник', 'Юз', 'ДС', 'Должность', 'Добавлен (МСК)', 'Кто добавил', 'Принят в клан', 'Статус инвайта'];
+  const lines = [header.map(csvEscape).join(';')];
+  rows.forEach((p) => {
+    lines.push([
+      p.nick || '', p.uz || '', p.ds || '', p.post || '',
+      formatMoscowDate(p.createdAt), p.addedBy || '',
+      p.accepted ? 'Да' : 'Нет',
+      p.accepted ? '' : (p.requestSent ? 'Запрос отправлен' : 'Ждёт отправки модератором')
+    ].map(csvEscape).join(';'));
+  });
+  const csvContent = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'reestr-uchastnikov-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+if (el.exportCsvBtn) el.exportCsvBtn.addEventListener('click', exportCSV);
+
+// ---------- Статистика ----------
+
+function openStatsModal() {
+  const total = state.people.length;
+  const accepted = state.people.filter((p) => p.accepted).length;
+  const notAccepted = total - accepted;
+  const requestSent = state.people.filter((p) => !p.accepted && p.requestSent).length;
+  const waiting = notAccepted - requestSent;
+
+  const byEmployee = {};
+  state.people.forEach((p) => {
+    const key = p.addedBy || '—';
+    byEmployee[key] = (byEmployee[key] || 0) + 1;
+  });
+  const employeeRows = Object.entries(byEmployee).sort((a, b) => b[1] - a[1]);
+
+  let html = '';
+  html += `<div class="stats-row"><span>Всего анкет</span><span class="val">${total}</span></div>`;
+  html += `<div class="stats-row"><span>Принято в клан</span><span class="val">${accepted}</span></div>`;
+  html += `<div class="stats-row"><span>Не принято</span><span class="val">${notAccepted}</span></div>`;
+  html += `<div class="stats-row"><span>— запрос отправлен</span><span class="val">${requestSent}</span></div>`;
+  html += `<div class="stats-row"><span>— ждут отправки</span><span class="val">${waiting}</span></div>`;
+  html += `<div class="stats-section-title">Добавлено сотрудниками</div>`;
+  employeeRows.forEach(([login, count]) => {
+    html += `<div class="stats-row"><span>${login}</span><span class="val">${count}</span></div>`;
+  });
+
+  el.statsContent.innerHTML = html;
+  openModal(el.statsModal);
+}
+
+if (el.statsBtn) el.statsBtn.addEventListener('click', openStatsModal);
+
+function updateRequestStatusDisplay(person) {
+  if (person.accepted) {
+    el.infoRequestRow.classList.add('hidden');
+    el.infoRequestStatus.classList.add('hidden');
+  } else {
+    el.infoRequestRow.classList.remove('hidden');
+    el.infoRequestStatus.classList.remove('hidden');
+    el.infoRequestStatus.textContent = person.requestSent
+      ? 'Статус: Запрос отправлен'
+      : 'Статус: Ждёт отправки модератором';
+  }
+}
+
+function openInfoModal(person, adminMode) {
+  el.infoNick.textContent = person.nick || 'Анкета';
+  el.infoAddedBy.textContent = person.addedBy || 'неизвестно';
+  el.infoCreatedAt.textContent = formatMoscowDate(person.createdAt);
+  el.infoAcceptedToggle.checked = !!person.accepted;
+  el.infoAcceptedToggle.disabled = !adminMode;
+  el.infoRequestToggle.checked = !!person.requestSent;
+  el.infoRequestToggle.disabled = !adminMode;
+  updateRequestStatusDisplay(person);
+  el.infoAcceptedToggle.onchange = async () => {
+    const accepted = el.infoAcceptedToggle.checked;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+        body: JSON.stringify({ action: 'update', id: person.id, accepted })
+      });
+      if (res.status === 401) return handleUnauthorized();
+      person.accepted = accepted;
+      updateRequestStatusDisplay(person);
+      renderTable();
+    } catch (err) {
+      alert('Не удалось сохранить статус');
+      el.infoAcceptedToggle.checked = !accepted;
+    }
+  };
+  el.infoRequestToggle.onchange = async () => {
+    const requestSent = el.infoRequestToggle.checked;
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+        body: JSON.stringify({ action: 'update', id: person.id, requestSent })
+      });
+      if (res.status === 401) return handleUnauthorized();
+      person.requestSent = requestSent;
+      updateRequestStatusDisplay(person);
+    } catch (err) {
+      alert('Не удалось сохранить статус');
+      el.infoRequestToggle.checked = !requestSent;
+    }
+  };
+  openModal(el.infoModal);
+}
+
+function makeCell(person, field, editable) {
+  const td = document.createElement('td');
+  td.className = 'editable';
+  td.textContent = person[field] || '';
+  if (editable) {
+    td.contentEditable = 'true';
+    td.addEventListener('blur', () => {
+      const newValue = td.textContent.trim();
+      if (newValue !== (person[field] || '')) updatePerson(person.id, field, newValue);
+    });
+    td.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
+    });
+  }
+  return td;
+}
+
+el.addForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nick = el.fNick.value.trim();
+  const uz = el.fUz.value.trim();
+  const ds = el.fDs.value.trim();
+  if (!nick) return;
+
+  const dup = state.people.find((p) =>
+    (nick && p.nick && p.nick.toLowerCase() === nick.toLowerCase()) ||
+    (uz && p.uz && p.uz.toLowerCase() === uz.toLowerCase()) ||
+    (ds && p.ds && p.ds.toLowerCase() === ds.toLowerCase())
+  );
+  if (dup) {
+    const proceed = confirm(
+      `Похожая анкета уже есть в списке (ник «${dup.nick}», юз «${dup.uz}», дс «${dup.ds}»).\nВсё равно добавить?`
+    );
+    if (!proceed) return;
+  }
+
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'add', nick, uz, ds, post: el.fPost.value.trim() })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const person = await res.json();
+    state.people.push(person);
+    el.addForm.reset();
+    renderTable();
+  } catch (err) {
+    alert('Не удалось добавить участника');
+  }
+});
+
+async function updatePerson(id, field, value) {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'update', id, [field]: value })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const person = state.people.find((p) => p.id === id);
+    if (person) person[field] = value;
+  } catch (err) {
+    alert('Не удалось сохранить изменение');
+  }
+}
+
+async function deletePerson(id) {
+  if (!confirm('Удалить участника?')) return;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'delete', id })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    state.people = state.people.filter((p) => p.id !== id);
+    renderTable();
+  } catch (err) {
+    alert('Не удалось удалить участника');
+  }
+}
+
+// ---------- Аккаунты сотрудников (только суперадмин) ----------
+
+el.newAccountBtn.addEventListener('click', () => {
+  el.accountError.classList.add('hidden');
+  el.accountSuccess.classList.add('hidden');
+  el.accountForm.reset();
+  openModal(el.accountModal);
+  el.aLogin.focus();
+});
+
+el.accountForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  el.accountError.classList.add('hidden');
+  el.accountSuccess.classList.add('hidden');
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({
+        action: 'create_account',
+        login: el.aLogin.value.trim(),
+        password: el.aPassword.value
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      el.accountError.textContent = data.error || 'Не удалось создать логин';
+      el.accountError.classList.remove('hidden');
+      return;
+    }
+    el.accountSuccess.textContent = 'Логин "' + data.login + '" создан';
+    el.accountSuccess.classList.remove('hidden');
+    el.accountForm.reset();
+    loadAccounts();
+  } catch (err) {
+    el.accountError.textContent = 'Не удалось связаться с сервером';
+    el.accountError.classList.remove('hidden');
+  }
+});
+
+async function loadAccounts() {
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'list_accounts' })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    const accounts = await res.json();
+    renderAccounts(accounts);
+  } catch (err) {
+    // тихо игнорируем — панель не критична
+  }
+}
+
+function renderAccounts(accounts) {
+  el.accountsList.innerHTML = '';
+  if (accounts.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = 'Пока нет созданных логинов';
+    li.style.fontFamily = 'inherit';
+    el.accountsList.appendChild(li);
+    return;
+  }
+  accounts.forEach((acc) => {
+    const li = document.createElement('li');
+    li.style.flexDirection = 'column';
+    li.style.alignItems = 'flex-start';
+    li.style.gap = '4px';
+
+    const topRow = document.createElement('div');
+    topRow.style.display = 'flex';
+    topRow.style.alignItems = 'center';
+    topRow.style.justifyContent = 'space-between';
+    topRow.style.width = '100%';
+
+    const name = document.createElement('span');
+    name.textContent = acc.login;
+    const right = document.createElement('span');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '8px';
+    const tag = document.createElement('span');
+    tag.className = 'role-tag';
+    tag.textContent = acc.role === 'superadmin' ? 'суперадмин' : 'сотрудник';
+    right.appendChild(tag);
+    if (acc.role !== 'superadmin') {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-danger';
+      delBtn.textContent = 'Удалить';
+      delBtn.addEventListener('click', () => deleteAccount(acc.login));
+      right.appendChild(delBtn);
+    }
+    topRow.appendChild(name);
+    topRow.appendChild(right);
+
+    const seenRow = document.createElement('span');
+    seenRow.style.fontSize = '11px';
+    seenRow.style.color = 'var(--text-dim)';
+    seenRow.textContent = acc.lastLogin
+      ? 'Последний вход: ' + formatMoscowDate(acc.lastLogin)
+      : 'Ещё не заходил(а)';
+
+    li.appendChild(topRow);
+    li.appendChild(seenRow);
+    el.accountsList.appendChild(li);
+  });
+}
+
+async function deleteAccount(login) {
+  if (!confirm('Удалить логин "' + login + '"?')) return;
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body: JSON.stringify({ action: 'delete_account', login })
+    });
+    if (res.status === 401) return handleUnauthorized();
+    loadAccounts();
+  } catch (err) {
+    alert('Не удалось удалить логин');
+  }
+}
+
+function handleUnauthorized() {
+  alert('Сессия истекла, войдите заново');
+  logout();
+}
+
+render();
+</script>
+</body>
+</html>
