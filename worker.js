@@ -269,6 +269,14 @@ async function handleApi(request, env) {
     return json({ linked: !!bindings[auth.login] });
   }
 
+  if (body.action === 'telegram_test') {
+    const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+    const chatId = bindings[auth.login];
+    if (!chatId) return json({ error: 'Telegram не привязан' }, 400);
+    await sendTelegramMessage(env, chatId, '🔔 Тестовое сообщение. Если вы его видите — уведомления настроены верно.');
+    return json({ ok: true });
+  }
+
   if (body.action === 'telegram_unlink') {
     const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
     delete bindings[auth.login];
@@ -346,4 +354,3 @@ export default {
     ctx.waitUntil(handleScheduled(env));
   }
 };
-  
