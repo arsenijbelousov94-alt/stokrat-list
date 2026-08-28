@@ -74,17 +74,23 @@ function generateLinkCode() {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function sendTelegramMessage(env, chatId, text) {
+async function sendTelegramMessage(env, chatId, text, threadId) {
   const token = env.TELEGRAM_BOT_TOKEN;
   if (!token) return { ok: false, description: 'TELEGRAM_BOT_TOKEN не задан' };
+  const payload = { chat_id: chatId, text };
+  if (threadId) payload.message_thread_id = threadId;
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text })
+    body: JSON.stringify(payload)
   });
   let data = {};
   try { data = await res.json(); } catch (e) {}
-  return { ok: res.ok && data.ok, description: data.description || (res.ok ? '' : `HTTP ${res.status}`) };
+  return {
+    ok: res.ok && data.ok,
+    description: data.description || (res.ok ? '' : `HTTP ${res.status}`),
+    messageId: data.result && data.result.message_id
+  };
 }
 
 function sortPeople(list) {
@@ -142,31 +148,94 @@ async function handleTelegramWebhook(request, env) {
     await kv.put('telegram_pending', JSON.stringify(pending));
 
     await sendTelegramMessage(env, chatId, `✅ Telegram привязан к аккаунту «${record.login}». Уведомления о непринятых заявках будут приходить сюда 4 раза в день (10:00, 12:00, 16:00 и 20:00 МСК).`);
+    return json({ ok: true });
   }
 
-  return json({ ok: true });
-}
+  if (text.startsWith('/setgroup')) {
+    const chatType = message.chat.type;
+    if (chatType !== 'group' && chatType !== 'supergroup') {
+      await sendTelegramMessage(env, chatId, 'Эту команду нужно отправлять внутри группы, которую вы хотите использовать для уведомлений.');
+      return json({ ok: true });
+    }
+
+    const senderId = message.from && message.from.id;
+    const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
+    const isLinkedEmployee = senderId && Object.values(bindings).some((v) => String(v) === String(senderId));
+
+    if (!isLinkedEmployee) {
+      await sendTelegramMessage(env, chatId, '⛔ Только сотрудник с привязанным на сайте Telegram может назначить эту группу для уведомлений.');
+      return json({ ok: true });
+    }
+
+    await kv.put('notify_group_chat_id', String(chatId));
+    if (message.message_thread_id) {
+      await kv.put('notify_group_thread_id', String(message.message_thread_id));
+    } else {
+      await kv.delete('notify_group_thread_id');
+    }
+    await kv.delete('group_status_message_id');
+    await sendTelegramMessage(env, chatId, '✅ Эта группа (раздел) назначена для живых уведомлений о непринятых анкетах. Убедитесь, что у бота есть право удалять сообщения (нужно для обновления списка).', message.message_thread_id);
+    await syncGroupStatus(env);
+    return json({ ok: true });
+  }
 
 async function handleScheduled(env) {
   const kv = env.PEOPLE_KV;
   if (!kv) return;
 
   const list = sortPeople(JSON.parse((await kv.get('people')) || '[]'));
-  const notAccepted = list
-    .map((p, i) => ({ p, num: i + 1 }))
-    .filter((entry) => !entry.p.accepted);
-
-  if (notAccepted.length === 0) return;
-
-  const lines = notAccepted.map(({ p, num }) =>
-    `№${num}. Ник: ${p.nick || '—'} | Юз: ${p.uz || '—'} | ДС: ${p.ds || '—'} | Принял: ${p.addedBy || '—'}`
-  );
-  const text = `⚠️ Не приняты в клан (${notAccepted.length}):\n\n${lines.join('\n')}`;
+  const text = buildStatusText(list);
+  if (!text) return;
 
   const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
   const chatIds = Object.values(bindings);
   for (const chatId of chatIds) {
     await sendTelegramMessage(env, chatId, text);
+  }
+}
+
+async function deleteTelegramMessage(env, chatId, messageId) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  if (!token || !messageId) return;
+  await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+  });
+}
+
+function buildStatusText(list) {
+  const notAccepted = list
+    .map((p, i) => ({ p, num: i + 1 }))
+    .filter((entry) => !entry.p.accepted);
+  if (notAccepted.length === 0) return null;
+  const lines = notAccepted.map(({ p, num }) =>
+    `№${num}. Ник: ${p.nick || '—'} | Юз: ${p.uz || '—'} | ДС: ${p.ds || '—'} | Принял: ${p.addedBy || '—'}`
+  );
+  return `⚠️ Не приняты в клан (${notAccepted.length}):\n\n${lines.join('\n')}`;
+}
+
+async function syncGroupStatus(env) {
+  const kv = env.PEOPLE_KV;
+  if (!kv) return;
+
+  const groupChatId = await kv.get('notify_group_chat_id');
+  if (!groupChatId) return;
+  const threadId = await kv.get('notify_group_thread_id');
+
+  const oldMessageId = await kv.get('group_status_message_id');
+  if (oldMessageId) {
+    await deleteTelegramMessage(env, groupChatId, oldMessageId);
+    await kv.delete('group_status_message_id');
+  }
+
+  const list = sortPeople(JSON.parse((await kv.get('people')) || '[]'));
+  const text = buildStatusText(list);
+  if (!text) return;
+
+  const result = await sendTelegramMessage(env, groupChatId, text, threadId);
+  if (result.ok && result.messageId) {
+    await kv.put('group_status_message_id', String(result.messageId));
   }
 }
 
@@ -303,6 +372,7 @@ async function handleApi(request, env) {
     };
     list.push(person);
     await kv.put('people', JSON.stringify(list));
+    await syncGroupStatus(env);
     return json(person);
   }
 
@@ -325,6 +395,7 @@ async function handleApi(request, env) {
     });
     if (!found) return json({ error: 'Не найдено' }, 404);
     await kv.put('people', JSON.stringify(list));
+    await syncGroupStatus(env);
     return json({ ok: true });
   }
 
@@ -332,6 +403,7 @@ async function handleApi(request, env) {
     if (!body.id) return json({ error: 'id обязателен' }, 400);
     list = list.filter((p) => p.id !== body.id);
     await kv.put('people', JSON.stringify(list));
+    await syncGroupStatus(env);
     return json({ ok: true });
   }
 
@@ -358,4 +430,4 @@ export default {
     ctx.waitUntil(handleScheduled(env));
   }
 };
-      
+                 
