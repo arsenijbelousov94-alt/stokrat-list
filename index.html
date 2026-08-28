@@ -431,7 +431,7 @@ async function openTelegramModal() {
     if (res.status === 401) return handleUnauthorized();
     const data = await res.json();
     if (data.linked) {
-      el.tgStatus.textContent = 'Telegram привязан. Уведомления о непринятых заявках приходят 2 раза в день (10:00 и 20:00 МСК).';
+      el.tgStatus.textContent = 'Telegram привязан. Уведомления о непринятых заявках приходят 4 раза в день (10:00, 12:00, 16:00 и 20:00 МСК).';
       el.tgTestBtn.classList.remove('hidden');
       el.tgUnlinkBtn.classList.remove('hidden');
     } else {
