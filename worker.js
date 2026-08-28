@@ -76,12 +76,15 @@ function generateLinkCode() {
 
 async function sendTelegramMessage(env, chatId, text) {
   const token = env.TELEGRAM_BOT_TOKEN;
-  if (!token) return;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+  if (!token) return { ok: false, description: 'TELEGRAM_BOT_TOKEN не задан' };
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, text })
   });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  return { ok: res.ok && data.ok, description: data.description || (res.ok ? '' : `HTTP ${res.status}`) };
 }
 
 function sortPeople(list) {
@@ -273,7 +276,8 @@ async function handleApi(request, env) {
     const bindings = JSON.parse((await kv.get('telegram_bindings')) || '{}');
     const chatId = bindings[auth.login];
     if (!chatId) return json({ error: 'Telegram не привязан' }, 400);
-    await sendTelegramMessage(env, chatId, '🔔 Тестовое сообщение. Если вы его видите — уведомления настроены верно.');
+    const result = await sendTelegramMessage(env, chatId, '🔔 Тестовое сообщение. Если вы его видите — уведомления настроены верно.');
+    if (!result.ok) return json({ error: 'Telegram отклонил отправку: ' + result.description }, 502);
     return json({ ok: true });
   }
 
